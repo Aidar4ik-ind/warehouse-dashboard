@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>СППР для сортировочного центра (оптимизация размещения товаров)</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+    <h1>Система поддержки принятия решений</h1>
+    <h2>Оптимизация размещения товаров в сортировочном центре маркетплейса</h2>
+    
+    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
+        <!-- Таблица объёмов товаров -->
+        <div style="flex: 1;">
+            <h3>📦 Поступление товаров (кг)</h3>
+            <table id="demandsTable">
+                <thead><tr><th>Товар</th><th>Объём, кг</th></tr></thead>
+                <tbody>
+                    <tr><td>T1</td><td><input type="number" id="d0" value="500" step="50"></td></tr>
+                    <tr><td>T2</td><td><input type="number" id="d1" value="800" step="50"></td></tr>
+                    <tr><td>T3</td><td><input type="number" id="d2" value="600" step="50"></td></tr>
+                    <tr><td>T4</td><td><input type="number" id="d3" value="700" step="50"></td></tr>
+                    <tr><td>T5</td><td><input type="number" id="d4" value="1200" step="50"></td></tr>
+                    <tr><td>T6</td><td><input type="number" id="d5" value="900" step="50"></td></tr>
+                    <tr><td>T7</td><td><input type="number" id="d6" value="400" step="50"></td></tr>
+                </tbody>
+            </table>
+        </div>
+        <!-- Таблица вместимостей зон -->
+        <div style="flex: 1;">
+            <h3>🏢 Вместимость зон (кг)</h3>
+            <table id="capacitiesTable">
+                <thead><tr><th>Зона</th><th>Вместимость</th></tr></thead>
+                <tbody>
+                    <tr><td>Z1</td><td><input type="number" id="c0" value="1000" step="100"></td></tr>
+                    <tr><td>Z2</td><td><input type="number" id="c1" value="1500" step="100"></td></tr>
+                    <tr><td>Z3</td><td><input type="number" id="c2" value="1200" step="100"></td></tr>
+                    <tr><td>Z4</td><td><input type="number" id="c3" value="2000" step="100"></td></tr>
+                    <tr><td>Z5</td><td><input type="number" id="c4" value="3000" step="100"></td></tr>
+                    <tr><td>Z6</td><td><input type="number" id="c5" value="2500" step="100"></td></tr>
+                    <tr><td>Z7</td><td><input type="number" id="c6" value="1800" step="100"></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div style="text-align: center;">
+        <button id="optimizeBtn">📊 Запустить оптимизацию</button>
+    </div>
+
+    <div id="results" class="result-area">
+        <!-- сюда динамически подставляются результаты -->
+        <p>Нажмите "Запустить оптимизацию" для расчёта оптимального распределения.</p>
+    </div>
+</div>
+
+<script>
+    document.getElementById('optimizeBtn').addEventListener('click', async () => {
+        // Сбор данных
+        let demands = [];
+        for(let i=0; i<7; i++) {
+            let val = parseFloat(document.getElementById(`d${i}`).value);
+            demands.push(isNaN(val) ? 0 : val);
+        }
+        let capacities = [];
+        for(let i=0; i<7; i++) {
+            let val = parseFloat(document.getElementById(`c${i}`).value);
+            capacities.push(isNaN(val) ? 0 : val);
+        }
+
+        const requestData = {
+            product_demands: demands,
+            zone_capacities: capacities
+        };
+
+        // Показываем индикатор загрузки
+        const resultsDiv = document.getElementById('results');
+        resultsDiv.innerHTML = '<p>⏳ Выполняется оптимизация...</p>';
+
+        try {
+            const response = await fetch('/api/optimize', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(requestData)
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                resultsDiv.innerHTML = `<p style="color:red;">❌ Ошибка: ${data.error}</p>`;
+                return;
+            }
+
+            // Формируем HTML отчёта
+            let html = `<h3>📈 Результаты оптимизации</h3>`;
+            html += `<div class="percentage-badge">📉 Сокращение времени на ${data.improvement_percent}% по сравнению с базовым алгоритмом</div>`;
+            html += `<p>✅ Суммарное оптимальное время размещения: <strong>${data.total_time} мин.</strong><br>`;
+            html += `⚙️ Время при жадном размещении: ${data.greedy_time} мин.</p>`;
+
+            // Визуализация заполненности зон
+            html += `<h3>🗺️ Загрузка складских зон (шкалы заполненности)</h3>`;
+            html += `<div class="zone-grid">`;
+            for (let j=0; j<7; j++) {
+                let percent = (data.zone_utilization[j] / data.zone_capacities[j] * 100).toFixed(1);
+                let fillColor = percent > 90 ? '#c44536' : (percent > 70 ? '#e6b800' : '#2c7fb8');
+                html += `
+                    <div class="zone-card">
+                        <div class="zone-title">Зона Z${j+1}</div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar" style="width: ${Math.min(percent,100)}%; background-color: ${fillColor};">${percent}%</div>
+                        </div>
+                        <div class="util-text">${data.zone_utilization[j]} / ${data.zone_capacities[j]} кг</div>
+                    </div>
+                `;
+            }
+            html += `</div>`;
+
+            // Таблица распределения товаров по зонам
+            html += `<h3>📋 Детальное распределение (кг)</h3>`;
+            html += `<table><thead><tr><th>Товар \\ Зона</th>`;
+            for(let j=0; j<7; j++) html += `<th>Z${j+1}</th>`;
+            html += `<th>Итого по товару</th></tr></thead><tbody>`;
+            for(let i=0; i<7; i++) {
+                let rowSum = 0;
+                html += `<tr><td><b>T${i+1}</b></td>`;
+                for(let j=0; j<7; j++) {
+                    let val = data.allocation[i][j] ? data.allocation[i][j].toFixed(1) : '0.0';
+                    rowSum += parseFloat(val);
+                    html += `<td>${val}</td>`;
+                }
+                html += `<td>${rowSum.toFixed(1)}</td></tr>`;
+            }
+            // Итого по зонам
+            html += `<tr><td><b>Загрузка зоны</b></td>`;
+            for(let j=0; j<7; j++) {
+                html += `<td><b>${data.zone_utilization[j].toFixed(1)}</b></td>`;
+            }
+            html += `<td></td></tr>`;
+            html += `</tbody></table>`;
+
+            resultsDiv.innerHTML = html;
+        } catch(err) {
+            resultsDiv.innerHTML = `<p style="color:red;">❌ Ошибка соединения с сервером. Убедитесь, что бэкенд запущен.</p>`;
+        }
+    });
+</script>
+</body>
+</html>
